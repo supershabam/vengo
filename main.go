@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"go/parser"
 	"go/printer"
@@ -20,14 +19,31 @@ func isStdlib(path string) bool {
 	return !strings.Contains(path, ".")
 }
 
-func ensurePrefix(path string) string {
-	if strings.Contains(path, basepath) {
+func ensurePrefix(path, base string) string {
+	if strings.Contains(path, base) {
 		return path
 	}
-	return strings.Replace(path, "\"", fmt.Sprintf("\"%s", basepath), 1)
+	return strings.Replace(path, "\"", fmt.Sprintf("\"%s/", base), 1)
 }
 
-func rewrite(path string) {
+func rebase(dir, base string) (first error) {
+	walkFn := func(path string, info os.FileInfo, err error) error {
+		if info.IsDir() {
+			// skip the .git directory
+			if strings.Contains(path, "/.git") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.Contains(path, ".go") {
+			rewrite(path, base)
+		}
+		return nil
+	}
+	return filepath.Walk(dir, walkFn)
+}
+
+func rewrite(path, base string) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, nil, 0)
 	if err != nil {
@@ -39,7 +55,7 @@ func rewrite(path string) {
 		if isStdlib(s.Path.Value) {
 			continue
 		}
-		s.Path.Value = ensurePrefix(s.Path.Value)
+		s.Path.Value = ensurePrefix(s.Path.Value, base)
 	}
 
 	file, err := os.Create(path)
@@ -50,31 +66,40 @@ func rewrite(path string) {
 	printer.Fprint(file, fset, f)
 }
 
-func main() {
-	if false {
-		cmd := exec.Command("git", strings.Split("clone --depth=1 https://github.com/gorilla/mux.git ./vendor/github.com/gorilla/mux", " ")...)
-		var buf bytes.Buffer
-		cmd.Stdout = &buf
-		cmd.Stderr = &buf
-		err := cmd.Run()
-		out := buf.Bytes()
-		if err != nil {
-			fmt.Printf("%s\n", out)
-		}
+func vengo(target, base string) (first error) {
+	gitURL := fmt.Sprintf("https://%s.git", target)
+	vendir := fmt.Sprintf("./vendor/%s", target)
+	// ensure vendir
+	if err := os.MkdirAll(vendir, 0777); err != nil {
+		return err
 	}
+	// clean vendir
+	cmd := exec.Command("rm", "-fr", vendir)
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	// clone into vendir
+	cmd = exec.Command("git", strings.Split(fmt.Sprintf("clone --depth=1 %s %s", gitURL, vendir), " ")...)
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	// un-gitify
+	cmd = exec.Command("rm", "-fr", fmt.Sprintf("%s/.git", vendir))
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	// rewrite cloned files
+	return rebase(vendir, base)
+}
 
-	walkFn := func(path string, info os.FileInfo, err error) error {
-		if info.IsDir() {
-			// skip the .git directory
-			if strings.Contains(path, "/.git") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if strings.Contains(path, ".go") {
-			rewrite(path)
-		}
-		return nil
+func main() {
+	if err := vengo("github.com/gorilla/mux", "github.com/supershabam/vengo"); err != nil {
+		panic(err)
 	}
-	filepath.Walk("./vendor/github.com/gorilla/mux", walkFn)
+	if err := vengo("github.com/gorilla/context", "github.com/supershabam/vengo"); err != nil {
+		panic(err)
+	}
+	if err := vengo("github.com/gorilla/sessions", "github.com/supershabam/vengo"); err != nil {
+		panic(err)
+	}
 }
