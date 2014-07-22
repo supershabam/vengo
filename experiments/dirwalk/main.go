@@ -1,12 +1,13 @@
 package main
 
 import (
+	"buffer"
 	"fmt"
 	"go/parser"
-	"path/filepath"
-	// "go/printer"
+	"go/printer"
 	"go/token"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
