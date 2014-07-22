@@ -1,10 +1,12 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,8 +14,23 @@ import (
 )
 
 var (
-	basepath = "github.com/supershabam/vengo/"
+	// base = "github.com/supershabam/vengo/"
+	base   string
+	target string
 )
+
+func init() {
+	flag.StringVar(&base, "base", "", "name of this package e.g. github.com/supershabam/vengo")
+	flag.StringVar(&target, "target", "", "name of package to install e.g. github.com/gorilla/mux")
+	flag.Parse()
+
+	if base == "" {
+		log.Fatalf("base must be provided")
+	}
+	if target == "" {
+		log.Fatalf("target must be provided")
+	}
+}
 
 func isStdlib(path string) bool {
 	return !strings.Contains(path, ".")
@@ -93,13 +110,7 @@ func vengo(target, base string) (first error) {
 }
 
 func main() {
-	if err := vengo("github.com/gorilla/mux", "github.com/supershabam/vengo"); err != nil {
-		panic(err)
-	}
-	if err := vengo("github.com/gorilla/context", "github.com/supershabam/vengo"); err != nil {
-		panic(err)
-	}
-	if err := vengo("github.com/gorilla/sessions", "github.com/supershabam/vengo"); err != nil {
+	if err := vengo(target, base); err != nil {
 		panic(err)
 	}
 }
